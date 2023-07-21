@@ -83,9 +83,19 @@ object ReadEventsApp extends IOApp {
       eventualJournal    <- EventualCassandra.of[F](eventualCassandraConfig, origin, none, cassandraClusterOf)
       headCache          <- HeadCache.of[F](consumerConfig, eventualJournal, none)
       producer           <- Journals.Producer.of[F](producerConfig)
+      origin             = Origin("ReadEventsApp")
+      journals           <- Journals[F](
+        origin.some,
+        producer,
+        consumer,
+        eventualJournal,
+        headCache,
+        consumerPoolSize = 3,
+        consumerPoolMetrics = none,
+        log,
+        none
+      )
     } yield {
-      val origin = Origin("ReadEventsApp")
-      val journals = Journals[F](origin.some, producer, consumer, eventualJournal, headCache, log, none)
       val key = Key(id = "id", topic = "topic")
       val journal = journals(key)
       for {

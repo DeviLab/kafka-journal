@@ -87,6 +87,7 @@ object JournalAdapter {
           eventualJournal = eventualJournal,
           journalMetrics = metrics.journal,
           conversionMetrics = metrics.conversion,
+          consumerPoolMetrics = metrics.consumerPool,
           callTimeThresholds = config.callTimeThresholds)
       } yield {
         journal.withLogError(log)
@@ -232,7 +233,8 @@ object JournalAdapter {
     headCache: Option[HeadCacheMetrics[F]] = none,
     producer: Option[ClientId => ProducerMetrics[F]] = none,
     consumer: Option[ClientId => ConsumerMetrics[F]] = none,
-    conversion: Option[ConversionMetrics[F]] = none
+    conversion: Option[ConversionMetrics[F]] = none,
+    consumerPool: Option[ConsumerPoolMetrics[F]] = none,
   )
 
   object Metrics {

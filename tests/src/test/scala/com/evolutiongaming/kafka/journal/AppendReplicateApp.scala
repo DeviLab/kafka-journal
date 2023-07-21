@@ -75,17 +75,18 @@ object AppendReplicateApp extends IOApp {
 
       for {
         producer <- Journals.Producer.of[F](config.kafka.producer)
-      } yield {
-        Journals[F](
+        journals <- Journals[F](
           origin = hostName.map(Origin.fromHostName),
           producer = producer,
           consumer = Journals.Consumer.of[F](config.kafka.consumer, config.pollTimeout),
           eventualJournal = EventualJournal.empty[F],
           headCache = HeadCache.empty[F],
+          consumerPoolMetrics = none,
+          consumerPoolSize = 10,
           log = log,
           conversionMetrics = none
         )
-      }
+      } yield journals
     }
 
     def replicator(hostName: Option[HostName])(implicit kafkaConsumerOf: KafkaConsumerOf[F]) = {

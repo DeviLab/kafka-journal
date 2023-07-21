@@ -1,15 +1,19 @@
 package com.evolutiongaming.kafka.journal
 
 import cats.data.{NonEmptyList => Nel, NonEmptySet => Nes}
-import cats.effect.Resource
+import cats.effect.{Clock, Deferred, GenConcurrent, Resource}
+import cats.effect.kernel.Resource.ExitCase
 import cats.syntax.all._
-import cats.~>
-import com.evolutiongaming.catshelper.{BracketThrowable, Log}
+import cats.effect.syntax.resource._
+import cats.{Functor, ~>}
+import com.evolutiongaming.catshelper.{BracketThrowable, Log, MeasureDuration}
 import com.evolutiongaming.kafka.journal.conversions.ConsRecordToActionRecord
+import com.evolutiongaming.kafka.journal.util.ResourcePool
 import com.evolutiongaming.kafka.journal.util.StreamHelper._
 import com.evolutiongaming.skafka.{Offset, Partition, TopicPartition}
 import com.evolutiongaming.sstream.Stream
 
+import scala.concurrent.duration.FiniteDuration
 
 trait ConsumeActionRecords[F[_]] {
 
@@ -18,14 +22,18 @@ trait ConsumeActionRecords[F[_]] {
 
 object ConsumeActionRecords {
 
-  def apply[F[_] : BracketThrowable](
-    consumer: Resource[F, Journals.Consumer[F]],
-    log: Log[F])(implicit
-    consRecordToActionRecord: ConsRecordToActionRecord[F]
+  def apply[F[_] : BracketThrowable: Clock](
+    consumerPool: ResourcePool[F, Journals.Consumer[F]],
+    log: Log[F],
+    poolMetrics: ConsumerPoolMetrics[F],
+  )(implicit
+    consRecordToActionRecord: ConsRecordToActionRecord[F],
+    genConcurrent: GenConcurrent[F, Throwable]
   ): ConsumeActionRecords[F] = {
     (key: Key, partition: Partition, from: Offset) => {
 
       val topicPartition = TopicPartition(topic = key.topic, partition = partition)
+      val topic = topicPartition.topic
 
       def seek(consumer: Journals.Consumer[F]) = {
         for {
@@ -50,15 +58,30 @@ object ConsumeActionRecords {
         } yield actions
       }
 
+      def consumerWithAcquisitionMetrics: Resource[F, Journals.Consumer[F]] =
+        for {
+          startedAcquiringAt <- Clock[F].monotonic.toResource
+          deferred <- Deferred[F, FiniteDuration].toResource
+          consumer <- consumerPool.borrow.onFinalize {
+            for {
+              start <- deferred.get
+              end <- Clock[F].monotonic
+              _ <- poolMetrics.useTime(topic, end - start)
+            } yield ()
+          }
+          acquiredAt <- Clock[F].monotonic.toResource
+          _ <- deferred.complete(acquiredAt).toResource
+          _ <- poolMetrics.acquireTime(topic, acquiredAt - startedAcquiringAt).toResource
+        } yield consumer
+
       for {
-        consumer <- consumer.toStream
+        consumer <- consumerWithAcquisitionMetrics.toStream
         _        <- seek(consumer).toStream
         records  <- Stream.repeat(poll(consumer))
         record   <- records.toStream1[F]
       } yield record
     }
   }
-
 
   implicit class ConsumeActionRecordsOps[F[_]](val self: ConsumeActionRecords[F]) extends AnyVal {
 

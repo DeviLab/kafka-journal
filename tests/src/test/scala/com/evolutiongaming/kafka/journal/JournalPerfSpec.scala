@@ -23,6 +23,7 @@ class JournalPerfSpec extends AsyncWordSpec with JournalSuite {
 
   private val many = 100
   private val events = 1000
+  private val consumerPoolSize = 10
   private val origin = Origin("JournalPerfSpec")
   private val timestamp = Instant.now().truncatedTo(ChronoUnit.MILLIS)
 
@@ -37,17 +38,18 @@ class JournalPerfSpec extends AsyncWordSpec with JournalSuite {
         config    <- config.liftTo[IO].toResource
         consumer   = Journals.Consumer.of[IO](config.journal.kafka.consumer, config.journal.pollTimeout)
         headCache <- headCacheOf(config.journal.kafka.consumer, eventualJournal)
-      } yield {
-        Journals(
+        journals  <- Journals(
           producer = producer,
           origin = origin.some,
           consumer = consumer,
           eventualJournal = eventualJournal,
           headCache = headCache,
+          consumerPoolSize = consumerPoolSize,
+          consumerPoolMetrics = none,
           log = log,
           conversionMetrics = none
         )
-      }
+      } yield journals
     }
   }
 

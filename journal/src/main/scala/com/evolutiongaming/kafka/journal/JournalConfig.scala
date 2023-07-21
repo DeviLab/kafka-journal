@@ -21,11 +21,15 @@ import scala.concurrent.duration._
   *   Configuration of head cache, which is, currently, only about enabling or
   *   disabling it. See [[HeadCache]] for more details on what is head cache
   *   and how it works.
+  * @param consumerPoolSize
+  *   Size of the pool that will be used for recovery. See [[ConsumeActionRecords]].
   */
 final case class JournalConfig(
   pollTimeout: FiniteDuration = 10.millis,
   kafka: KafkaConfig = KafkaConfig("journal"),
-  headCache: JournalConfig.HeadCache = JournalConfig.HeadCache.default)
+  headCache: JournalConfig.HeadCache = JournalConfig.HeadCache.default,
+  consumerPoolSize: Int = 250,
+)
 
 object JournalConfig {
 
